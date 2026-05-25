@@ -1,19 +1,19 @@
 ---
 name: feature-lifecycle
-description: Build a complete feature from requirements to working code using BDD specs, test-first implementation across clean architecture layers, DI wiring, and optional UI composition. Stack-agnostic and language-agnostic — discovers all conventions from project documentation.
+description: Use when building a new feature end-to-end from requirements, implementing a feature spec across architecture layers, executing a specific phase of a multi-layer feature pipeline, or scaffolding a dry-run file structure. Stack-agnostic and language-agnostic.
 ---
 
-## What I Do
+## Overview
 
-I drive the **full lifecycle of building a self-contained feature**: from decomposing requirements into BDD specs, through test-first implementation across every architecture layer, to DI wiring and page composition.
+Drives the **full lifecycle of building a self-contained feature**: from decomposing requirements into BDD specs, through test-first implementation across every architecture layer, to DI wiring and page composition.
 
 **Primary output**: numbered micro BDD spec files capturing every testable subject.
 
 **Secondary output**: working implementation across all layers — domain → ports → application → infrastructure → DI → UI — driven by those specs.
 
-I discover all conventions from the project itself. No hardcoded assumptions about frameworks, languages, or folder structure.
+All conventions are discovered from the project itself. No hardcoded assumptions about frameworks, languages, or folder structure.
 
-## When to Use Me
+## When to Use
 
 - When the user asks to build a new feature end-to-end ("build the pulse issues feature")
 - When the user provides a requirements document or feature spec and says "implement this"
@@ -21,16 +21,16 @@ I discover all conventions from the project itself. No hardcoded assumptions abo
 - When the user says "scaffold this feature" for a dry-run of file structure
 - When the user has BDD spec files and wants implementation driven from them
 
-## When NOT to Use Me
+## When NOT to Use
 
 - Adding tests to **existing** code → use `test-writer`
 - Building a single component → use `component-scaffold`
 - Fixing a bug or debugging → use `debug-error` or `systematic-debugging`
 - Refactoring existing code → use `refactor-safe`
 
-## How I Work
+## How it Works
 
-I run a **9-phase pipeline** (Phase 0 through Phase 8). Each phase is independently executable. The user can run all phases sequentially or target a specific phase.
+Runs a **9-phase pipeline** (Phase 0 through Phase 8). Each phase is independently executable. The user can run all phases sequentially or target a specific phase.
 
 ```
 Phase 0: DISCOVER      — Clarify ambiguous requirements (question catalog in DISCOVER.md)
@@ -79,11 +79,12 @@ Before generating specs, resolve any ambiguity by asking the user clarifying que
 ### Process
 
 1. Read the user's feature request and requirements
-2. Run the Architecture Discovery Protocol to learn what's already answerable from project docs
-3. Identify ambiguous inputs using the **question catalog** in `DISCOVER.md` (located alongside this file)
-4. Skip questions already answerable from the user's prompt or project conventions
-5. Present remaining questions in a **single batch** (never one-at-a-time)
-6. Incorporate answers into spec generation in Phase 1
+2. Check whether the feature can be expressed as an FDD name (`<Action> <Result> <Object>`). If not, include this as the **first question** in the batch — the canonical name must be confirmed before Phase 1
+3. Run the Architecture Discovery Protocol to learn what's already answerable from project docs
+4. Identify ambiguous inputs using the **question catalog** in `DISCOVER.md` (located alongside this file)
+5. Skip questions already answerable from the user's prompt or project conventions
+6. Present remaining questions in a **single batch** (never one-at-a-time)
+7. Incorporate answers into spec generation in Phase 1
 
 ### When to skip this phase
 
@@ -116,12 +117,55 @@ Full question catalog and defaults are in `DISCOVER.md`.
 3. Decompose the feature into **testable subjects** — one subject per file
 4. Generate numbered micro spec files
 
+### Feature Naming (FDD)
+
+Every feature must have a canonical name following the FDD rule:
+
+```
+<Action> <Result> <Object>
+```
+
+Examples: `Calculate Total Price` · `Approve Leave Request` · `Generate Customer Statement`
+
+This name is the single source of truth for all downstream naming. Derive everything from it:
+
+| FDD Name | Feature folder | Use case | Domain entity | Port |
+|----------|---------------|----------|---------------|------|
+| Calculate Total Price | `calculate-total-price/` | `CalculateTotalPriceUseCase` | `Price` | `IPriceRepository` |
+| Approve Leave Request | `approve-leave-request/` | `ApproveLeaveRequestUseCase` | `LeaveRequest` | `ILeaveRequestRepository` |
+| Generate Customer Statement | `generate-customer-statement/` | `GenerateCustomerStatementUseCase` | `Statement` | `IStatementRepository` |
+
+**Derivation rules:**
+- **Object** → domain entity name and port name (`I{Object}Repository`)
+- **Action** → use case verb prefix (`{Action}{Object}UseCase`)
+- **Result** (when distinct from Object) → response model or output value object name
+
+When no project-specific naming convention exists, this derivation is the default. When a project convention exists, prefer it — but the FDD name still anchors the feature identity.
+
 ### Decomposition rules
 
 - **One subject per file**: a class method, a function, a use case, a component, a helper
 - **Numbered prefix**: `01-subjectName.md`, `02-anotherSubject.md`, ... `NN-reference.md`
 - **Last file for non-testable reference**: column mappings, color constants, configuration tables
 - **Group by layer**: domain subjects first, then application, then presentation/UI
+
+### Edge cases and error handling ownership
+
+Phase 1 is where **all** edge cases and error handling are defined — not discovered later during implementation.
+
+| What to define | Where in the spec |
+|----------------|-------------------|
+| Invalid inputs, boundary values | `# Edge Cases` section |
+| Rejection conditions and error types | `# Failure Modes` section |
+| Invariants that must never be violated | `# Invariants` section |
+
+**Rule:** If an error scenario is not in a spec file, it must not be silently implemented later. Either add it to the spec or raise it with the user. Implementation phases consume what Phase 1 defines:
+
+| Phase | Error handling responsibility |
+|-------|-------------------------------|
+| Phase 2 (DOMAIN) | Implement domain validation and invariant violations from spec |
+| Phase 4 (APPLICATION) | Implement use case failure paths from `Failure Modes` |
+| Phase 5 (INFRASTRUCTURE) | Wrap and transform adapter errors — never leak HTTP details upstream |
 
 ### Output location
 
@@ -406,6 +450,30 @@ After wiring, verify that resolution works (type-check catches miswired dependen
 
 If none of these apply, skip this phase.
 
+### Figma reference (when provided)
+
+If the user provides a Figma URL, extract design context **before** writing any UI code:
+
+1. Call `get_design_context` on the URL — extracts layout structure, component names, spacing, and design tokens
+2. Call `get_screenshot` — use as visual ground truth when implementing components
+3. Map Figma component names to the project's existing UI primitives (Button, Badge, Table, etc.)
+4. Use extracted colors, spacing, and typography values directly — do not guess or invent values
+
+If no Figma URL is provided, infer layout from the spec files and existing project components.
+
+### Figma edge cases
+
+| Situation | Action |
+|-----------|--------|
+| URL is inaccessible or private | Warn the user, skip Figma extraction, fall back to spec-driven layout |
+| `get_design_context` returns empty or partial data | Fall back to `get_screenshot` alone; note which tokens are missing |
+| `get_screenshot` fails | Proceed with `get_design_context` data only; note the gap |
+| Figma component names don't match any project primitive | Ask the user to map them, or use the closest visual match and add a comment |
+| Figma URL points to a specific node vs a full page | Use whichever node is provided; do not navigate to parent frames unless instructed |
+| Figma has multiple pages | Use the page the URL links to; ask the user if ambiguous |
+| Design tokens (colors, spacing) differ from the project's design system | Prefer the project's existing tokens; flag mismatches for the user to resolve |
+| Figma MCP is unavailable | Warn the user, skip Figma extraction entirely, proceed from specs |
+
 ### Sub-phases
 
 1. **Reactive binding** — Create a hook/composable that wraps the application store in the project's reactive primitives (signals, refs, observables)
@@ -418,6 +486,7 @@ If none of these apply, skip this phase.
 - All data comes via props from the hook/store
 - Use project's existing UI primitives (Button, Badge, Table, etc.)
 - Discover component patterns from `src/components/` conventions
+- When a Figma reference exists, it is the source of truth for layout and visual design — spec files govern behavior, Figma governs appearance
 
 ### File placement
 

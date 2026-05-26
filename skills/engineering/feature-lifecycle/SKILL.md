@@ -41,7 +41,7 @@ Phase 4: APPLICATION   — Use cases, stores, pure helpers (TDD)
 Phase 5: INFRASTRUCTURE — Adapter implementations
 Phase 6: DI            — Dependency injection wiring
 Phase 7: UI            — Hook binding → components → page (optional)
-Phase 8: VERIFY        — lint → type-check → tests
+Phase 8: VERIFY        — Final verification gate (full project: lint → type-check → all tests → build)
 ```
 
 **Dry-run mode**: when the user says "scaffold", "dry-run", or "plan only", I generate all spec files and file scaffolds (empty files with correct names and locations) without writing implementation.
@@ -58,13 +58,18 @@ Before Phase 1, I discover the project's conventions by reading documentation fi
 | `src/<layer>/AGENTS.md` (each layer) | Max file lines, allowed/forbidden imports, naming conventions, file structure |
 | `docs/FDD/AGENTS.md` | FDD folder scaffold, layer rules, naming conventions, forbidden patterns |
 | `docs/FDD/GUIDE.md` | Full annotated examples, templates, testing patterns |
-| `package.json` | Test framework, dependencies (detects solid-js, react, vue, etc.) |
+| `package.json` | Test framework, dependencies, scripts (detects solid-js, react, vue, angular, etc.) |
 | `requirements/<feature>/template.md` | Project-specific spec template format (if exists) |
-| Test config (`vitest.config.*`, `jest.config.*`, etc.) | Test globals, coverage settings, file patterns |
+| Test config (`vitest.config.*`, `jest.config.*`, `karma.conf.*`, `angular.json`, etc.) | Test globals, coverage settings, file patterns, test runner |
+| Existing test files (`**/*.spec.ts`, `**/*.test.ts`, `**/*_test.*`, `**/*Test.*`) | Test file naming convention, assertion library, mocking patterns, colocated vs separate |
 
 **If no AGENTS.md files exist**, I fall back to:
 - Discovering layer structure from `src/` directory listing
-- Detecting test framework from `package.json` devDependencies
+- Detecting test framework from `package.json` devDependencies (jasmine, jest, vitest, mocha, karma, etc.)
+- **Detecting framework** from `package.json` dependencies (`@angular/core` → Angular, `react` → React, `solid-js` → SolidJS, `vue` → Vue, etc.)
+- **Detecting test file naming convention** by scanning for existing test files: `**/*.spec.ts` vs `**/*.test.ts` vs `**/*_test.*` vs `**/*Test.*` — use whichever pattern exists in the project
+- **Detecting assertion and mocking libraries** from existing test files: `expect()` (Jasmine/Jest), `assert()` (Node/Vitest), `vi.fn()` (Vitest), `jest.fn()` (Jest), `jasmine.createSpy()` (Jasmine), `spyOn()` (Jasmine), `sinon` (Sinon.js)
+- **Detecting DI pattern** from existing code: Angular (`@Injectable`, `providedIn: 'root'`), Awilix, InversifyJS, tsyringe, manual factory functions
 - Inferring naming conventions from existing files in each layer
 - Using sensible defaults (entities as interfaces, ports as `I{Name}` interfaces, etc.)
 
@@ -298,7 +303,7 @@ Implement domain entities, value objects, validation, and pure functions. **Test
 
 - **No mocks** — domain layer is pure input/output
 - **No framework imports** — no `solid-js`, `react`, `express`, no I/O
-- **No async** — domain is synchronous (if the project conventions say so)
+- **No async** — domain is synchronous. All I/O and async operations belong in the infrastructure or application layers. If the project has async domain methods, treat that as infrastructure concern leakage to be extracted, not a pattern to replicate
 - Assert behavior, not implementation — test returned values, state changes, thrown errors
 - Explicit assertions — never `toBeDefined()` or `toBeTruthy()` when a precise value can be asserted
 - Mutation-resistant — tests must catch inverted conditions, removed validation, deleted branches
@@ -308,7 +313,7 @@ Implement domain entities, value objects, validation, and pure functions. **Test
 Discovered from project conventions. Typical patterns:
 - `src/domain/entities/<Name>.ts` or `src/features/<feature>/domain/<name>.ts`
 - `src/domain/value-objects/<Name>.ts`
-- Tests alongside source: `<Name>.test.ts` or `__test__/<Name>.test.ts`
+- Tests alongside source: `<Name>.test.ts` or `<Name>.spec.ts` (match project convention), or `__test__/<Name>.test.ts`
 
 ---
 
@@ -364,7 +369,16 @@ Execute in this order. Each sub-phase writes tests before implementation.
 
 ### Mock strategy
 
-Mock only port interfaces — implement the interface with test doubles using the project's mocking library (`vi.fn()`, `jest.fn()`, etc.). Never mock pure functions, domain logic, or value objects.
+Mock only port interfaces — implement the interface with test doubles. Use the project's mocking library (detected from existing test files):
+
+| Library | Mock creation |
+|---------|--------------|
+| Vitest | `vi.fn()` |
+| Jest | `jest.fn()` |
+| Jasmine | `jasmine.createSpy()`, `jasmine.createSpyObj()` |
+| Sinon | `sinon.stub()`, `sinon.createStubInstance()` |
+
+**For Angular projects**: provide mocks via `TestBed.configureTestingModule({ providers: [{ provide: RealService, useValue: mock }] })`. Never mock pure functions, domain logic, or value objects.
 
 ### Output port pattern
 
@@ -380,7 +394,7 @@ Discovered from project conventions. Typical patterns:
 - Use cases: `src/application/use-cases/<verb><Name>UseCase.ts` or `src/features/<feature>/application/<verb><Name>.ts`
 - Stores: `src/features/<feature>/application/<name>Store.ts`
 - Helpers: `src/features/<feature>/application/<name>Helpers.ts`
-- Tests: `__test__/<name>.test.ts` alongside source
+- Tests: `<name>.test.ts` or `<name>.spec.ts` (match project convention) alongside source
 
 ---
 
@@ -402,7 +416,14 @@ Implement the port interfaces as concrete adapters (HTTP clients, database repos
 - Follow existing adapter patterns in the project
 - Never expose HTTP-specific details (status codes, headers, URLs) to the application layer
 - Use the project's API client — never raw `fetch` or `axios` if a wrapper exists
-- Typically excluded from coverage; tested indirectly through use case tests
+- Not every adapter needs dedicated tests. Apply tests based on what the adapter does:
+  - **Thin adapters** (delegate to API client, return response as-is): no dedicated tests needed; covered by use case integration tests
+  - **Adapters with logic** (data transformation, response mapping, error translation, serialization): write targeted unit tests for the transformation/mapping logic
+- When testing adapters with logic:
+  - Mock only the HTTP boundary (API client) — keep tests synchronous and fast
+  - Assert on the output domain model, not HTTP details
+  - Each test should catch a real bug: wrong field mapping, missing null handling, incorrect error translation
+- Guiding principles: **confidence** (prove the adapter handles real-world response shapes and error conditions), **maintainability** (test transformation logic, not the transport), **fast feedback** (mock at the boundary, run synchronously), **meaningful** (every test catches a real bug, not just a line covered)
 
 ### File placement
 
@@ -501,7 +522,9 @@ Discovered from project conventions. Typical patterns:
 
 ### What happens
 
-Run the project's verification pipeline. Discovered from root `AGENTS.md` or `package.json` scripts.
+Run the **full project** verification pipeline — not just the current feature's files. This catches cross-phase integration issues that per-phase verification misses.
+
+Discovered from root `AGENTS.md` or `package.json` scripts.
 
 ### Typical verification order
 
@@ -512,11 +535,29 @@ Run the project's verification pipeline. Discovered from root `AGENTS.md` or `pa
 4. build       — (optional) if project has a build step
 ```
 
-### When to verify
+### Verification command discovery
 
-- **After every implementation phase** (2, 4, 5, 6, 7) — not just at the end
-- This catches import path errors, type mismatches, and lint violations early
+Discover the actual commands from the project. Check in this order:
+
+1. `AGENTS.md` verification section (authoritative if present)
+2. `package.json` `scripts` section (e.g., `"test": "vitest"`, `"test": "ng test"`, `"lint": "eslint ."`, `"build": "tsc"`)
+3. Framework-specific CLI detection from `package.json` dependencies or lockfile:
+   - `@angular/cli` in dependencies → `ng lint`, `ng test`, `ng build` (type-check is embedded in build)
+   - `vite` in dependencies → `vite build`, test via vitest or configured runner
+   - `next` in dependencies → `next build`, `next lint`
+   - No framework detected → use generic `tsc --noEmit`, configured linter, configured test runner
+
+### Two levels of verification
+
+**Per-phase verification** (embedded in Phases 2, 4, 5, 6, 7):
+- Run lint + type-check + tests for the current phase's files only
+- Quick feedback — catch errors early before they compound
 - If verification fails, fix before moving to the next phase
+
+**Phase 8: Final verification gate** (after all phases complete):
+- Run the full project verification pipeline (all files, all tests, full build)
+- Catches cross-phase integration issues: import path mismatches, type contract drift, missing DI registrations
+- This is the gate before the feature is considered complete
 
 ---
 

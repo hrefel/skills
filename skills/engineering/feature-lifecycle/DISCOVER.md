@@ -4,6 +4,20 @@ This file defines the clarification questions the `feature-lifecycle` skill asks
 
 ---
 
+## FDD Name Check
+
+Before all other questions, verify the feature has a canonical FDD name:
+
+```
+<Action> <Result> <Object>
+```
+
+Examples: `Calculate Total Price` · `Approve Leave Request` · `Generate Customer Statement`
+
+If the user's request cannot be expressed in this form, make this the **first question** in the batch. The canonical name anchors all downstream naming (feature folder, use case, entity, port).
+
+---
+
 ## When to Activate
 
 Before Phase 1 (SPEC). Only ask questions that are **NOT** answerable from:
@@ -148,3 +162,28 @@ Use these heuristics to decide which question categories to include in the batch
 | A feature name that already exists in the codebase | Codebase Reuse |
 
 If none of these keywords appear and the feature is small (e.g., a single utility function), skip Phase 0 entirely and go straight to Phase 1.
+
+---
+
+## Batch Presentation Format
+
+Present all applicable questions in one message, grouped by category:
+
+```
+Before I generate specs, I need a few clarifications:
+
+**State Machine** (required)
+1. What states can [entity] be in?
+2. What transitions are allowed?
+
+**Action Buttons** (required)
+3. What row actions exist, and are any conditional?
+
+**Column Display**
+4. How should [date column] be formatted — relative or absolute?
+
+**Filter Behavior**
+5. Are multiple filters AND or OR?
+```
+
+Never ask follow-up questions one at a time. Never proceed to Phase 1 without resolving 🔴 Blockers.
